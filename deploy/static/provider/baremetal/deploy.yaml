@@ -320,8 +320,19 @@ subjects:
   namespace: ingress-nginx
 ---
 apiVersion: v1
+kind: ConfigMap
+data:
+  "12346": elector-prod/kuropatwa:12346
+    #  "1935": avideo/live:1935
+metadata:
+  name: nginx-ingress-tcp-conf
+  namespace: ingress-nginx
+---
+apiVersion: v1
 data:
   allow-snippet-annotations: "false"
+  enable-real-ip: "true"
+  forwarded-for-header: "proxy_protocol"
 kind: ConfigMap
 metadata:
   labels:
@@ -389,7 +400,7 @@ spec:
   type: ClusterIP
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   labels:
     app.kubernetes.io/component: controller
@@ -427,6 +438,8 @@ spec:
         - --controller-class=k8s.io/ingress-nginx
         - --ingress-class=nginx
         - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+        - --tcp-services-configmap=$(POD_NAMESPACE)/nginx-ingress-tcp-conf
+        - --enable-ssl-passthrough
         - --validating-webhook=:8443
         - --validating-webhook-certificate=/usr/local/certificates/cert
         - --validating-webhook-key=/usr/local/certificates/key
@@ -462,14 +475,25 @@ spec:
         name: controller
         ports:
         - containerPort: 80
+          hostPort: 80
           name: http
           protocol: TCP
         - containerPort: 443
           name: https
+          hostPort: 443
           protocol: TCP
         - containerPort: 8443
           name: webhook
           protocol: TCP
+        - name: grpc-12346
+          containerPort: 12346
+          hostPort: 12346
+          protocol: TCP
+      #            - name: rtmp-1935
+      #              containerPort: 1935
+      #              hostPort: 1935
+      #              protocol: TCP
+
         readinessProbe:
           failureThreshold: 3
           httpGet:
@@ -503,6 +527,7 @@ spec:
       dnsPolicy: ClusterFirst
       nodeSelector:
         kubernetes.io/os: linux
+        ingress-entry: "true"
       serviceAccountName: ingress-nginx
       terminationGracePeriodSeconds: 300
       volumes:
@@ -624,6 +649,8 @@ metadata:
     app.kubernetes.io/part-of: ingress-nginx
     app.kubernetes.io/version: 1.11.3
   name: nginx
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
 spec:
   controller: k8s.io/ingress-nginx
 ---
